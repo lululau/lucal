@@ -4,6 +4,8 @@ Modern TUI rewrite of the legacy `lucal` lunar calendar CLI. It keeps the origin
 usage semantics while adding an interactive Bubble Tea interface as the default
 experience.
 
+![lucal](./screenshots/screenshot.0.png)
+
 ## Features
 
 - Interactive TUI by default with smooth keyboard navigation
@@ -27,7 +29,7 @@ experience.
 ### Install
 
 ```bash
-go install github.com/lululau/lucal/cmd/lucal@main
+go install github.com/lululau/lucal/cmd/lucal@latest
 ```
 
 ## Build & Run

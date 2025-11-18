@@ -28,6 +28,14 @@ experience.
 
 ### Install
 
+#### Homebrew
+
+```bash
+brew install lululau/utils/lucal
+```
+
+#### From source
+
 ```bash
 go install github.com/lululau/lucal/cmd/lucal@latest
 ```

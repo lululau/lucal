@@ -1,5 +1,7 @@
 # lucal (Go + Bubble Tea)
 
+[中文](./README.zh_CN.md)
+
 Modern TUI rewrite of the legacy `lucal` lunar calendar CLI. It keeps the original
 usage semantics while adding an interactive Bubble Tea interface as the default
 experience.
@@ -53,15 +55,15 @@ go build ./cmd/lucal
 ### CLI Usage
 
 ```
-lucal               # 当前月（交互式）
-lucal -y            # 当前年
-lucal 9             # 当年9月
-lucal 1983          # 公元1983年
-lucal 2012 12       # 2012年12月
-lucal -y 9          # 公元9年的全年（受限于数据源，1900 年以前会报错）
-lucal -n …          # 非交互模式，渲染输出后立即退出
-lucal -u            # 下载最新的节假日数据
-lucal -h <file>     # 指定节假日数据文件（用于调试）
+lucal               # current month (interactive)
+lucal -y            # current year
+lucal 9             # September of current year
+lucal 1983          # year 1983 AD
+lucal 2012 12       # December 2012
+lucal -y 9          # full year of 9 AD (limited by data source, errors before 1900)
+lucal -n …          # non-interactive mode, render output and exit immediately
+lucal -u            # download latest holiday data
+lucal -h <file>     # specify holiday data file (for debugging)
 ```
 
 ### Interactive Shortcuts
@@ -77,7 +79,7 @@ lucal -h <file>     # 指定节假日数据文件（用于调试）
 | `Esc`      | Cancel current input dialog      |
 
 Tip: the year prompt accepts either `YYYY` or `YYYY MM`, so `y` → `2025 10`
-instantly jumps到 2025年10月。
+instantly jumps to October 2025.
 
 ### Holiday Data
 

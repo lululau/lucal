@@ -27,13 +27,13 @@ experience.
 ### Install
 
 ```bash
-go install github.com/lucal/lucal/cmd/lucal@main
+go install github.com/lululau/lucal/cmd/lucal@main
 ```
 
 ## Build & Run
 
 ```bash
-git clone https://github.com/lucal/lucal.git
+git clone https://github.com/lululau/lucal.git
 cd lucal
 go build ./cmd/lucal
 ./lucal            # interactive calendar for current month

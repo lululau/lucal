@@ -1,4 +1,4 @@
-module github.com/lucal/lucal
+module github.com/lululau/lucal
 
 go 1.25.4
 

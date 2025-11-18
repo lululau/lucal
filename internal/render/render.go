@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lucal/lucal/internal/calendar"
-	"github.com/lucal/lucal/internal/textwidth"
+	"github.com/lululau/lucal/internal/calendar"
+	"github.com/lululau/lucal/internal/textwidth"
 )
 
 const cellPadding = 1

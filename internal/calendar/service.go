@@ -6,7 +6,7 @@ import (
 	"time"
 
 	calendarlib "github.com/Lofanmi/chinese-calendar-golang/calendar"
-	"github.com/lucal/lucal/internal/holidays"
+	"github.com/lululau/lucal/internal/holidays"
 )
 
 // Supported Gregorian year range enforced by the upstream library.

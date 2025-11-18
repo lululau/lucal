@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucal/lucal/internal/calendar"
+	"github.com/lululau/lucal/internal/calendar"
 )
 
 func TestMonthBlockContainsLunarLabels(t *testing.T) {

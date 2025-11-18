@@ -8,7 +8,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
 
-	"github.com/lucal/lucal/internal/calendar"
+	"github.com/lululau/lucal/internal/calendar"
 )
 
 // PlainOptions controls how the non-interactive renderer behaves.

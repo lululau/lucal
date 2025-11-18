@@ -3,7 +3,7 @@ package textwidth_test
 import (
 	"testing"
 
-	"github.com/lucal/lucal/internal/textwidth"
+	"github.com/lululau/lucal/internal/textwidth"
 )
 
 func TestStringWidthMixedScripts(t *testing.T) {

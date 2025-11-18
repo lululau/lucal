@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lucal/lucal/internal/calendar"
-	"github.com/lucal/lucal/internal/holidays"
-	"github.com/lucal/lucal/internal/render"
-	"github.com/lucal/lucal/internal/tui"
+	"github.com/lululau/lucal/internal/calendar"
+	"github.com/lululau/lucal/internal/holidays"
+	"github.com/lululau/lucal/internal/render"
+	"github.com/lululau/lucal/internal/tui"
 )
 
 var (

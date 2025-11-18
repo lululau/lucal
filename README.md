@@ -24,6 +24,12 @@ experience.
 - Years between **1900** and **3000** (limitation of the upstream
   Chinese-calendar dataset)
 
+### Install
+
+```bash
+go install github.com/lucal/lucal/cmd/lucal@main
+```
+
 ## Build & Run
 
 ```bash

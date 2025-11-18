@@ -308,16 +308,12 @@ func applyColors(output string, highlights map[int]highlightInfo) string {
 	}
 
 	// Second pass: highlight lunar labels
-	// To avoid matching the same lunar label from different dates, we match them
-	// in the context of their corresponding Gregorian dates.
-	// Since dates are already colored, we can use a simpler approach: split by lines
-	// and match lunar labels that appear after colored dates in the same column
+	// Use line-based approach to ensure lunar labels are colored in the correct column
 	lines := strings.Split(output, "\n")
 	coloredLunarLabels := make(map[string]bool) // Track which date's lunar label we've colored
 
 	for _, dayNum := range dayNums {
 		info := highlights[dayNum]
-		dayStr := fmt.Sprintf("%d", dayNum)
 		var colorStart string
 
 		// Determine color: holiday/workday takes priority over today
@@ -339,41 +335,35 @@ func applyColors(output string, highlights map[int]highlightInfo) string {
 			continue // Already colored this specific date's lunar label
 		}
 
-		// Find the line containing the colored date, then color the lunar label in the next line
+		// Find the line containing the colored Gregorian date
+		dayStr := fmt.Sprintf("%d", dayNum)
 		coloredDatePattern := fmt.Sprintf("%s%s%s", colorStart, dayStr, colorEnd)
-		escapedLunar := regexp.QuoteMeta(info.lunarLabel)
 
 		for i := 0; i < len(lines)-1; i++ {
-			// Check if this line contains the colored date
 			if strings.Contains(lines[i], coloredDatePattern) {
-				// Find the position of the date in this line
-				dateIdx := strings.Index(lines[i], coloredDatePattern)
-				if dateIdx >= 0 {
-					// Find the corresponding position in the next line (lunar row)
-					// Match the lunar label at approximately the same column position
-					lunarPattern := fmt.Sprintf(`(\s|│)%s(\s+|│)`, escapedLunar)
-					lunarRe := regexp.MustCompile(lunarPattern)
+				// This line contains the colored date, check the next line for lunar labels
+				nextLine := lines[i+1]
 
-					// Try to find the lunar label in the next line near the same column
-					nextLine := lines[i+1]
-					matches := lunarRe.FindAllStringIndex(nextLine, -1)
+				// Find all occurrences of this lunar label in the next line
+				escapedLunar := regexp.QuoteMeta(info.lunarLabel)
+				lunarPattern := fmt.Sprintf(`(\s|│)(%s)(\s+|│)`, escapedLunar)
+				lunarRe := regexp.MustCompile(lunarPattern)
 
-					// Find the match closest to the date's column position
-					bestMatch := -1
-					minDist := len(nextLine)
-					for _, match := range matches {
-						dist := abs(match[0] - dateIdx)
-						if dist < minDist {
-							minDist = dist
-							bestMatch = match[0]
-						}
-					}
+				// Replace only the first occurrence (should be in the correct column)
+				if loc := lunarRe.FindStringIndex(nextLine); loc != nil {
+					before := nextLine[:loc[0]]
+					matched := nextLine[loc[0]:loc[1]]
+					after := nextLine[loc[1]:]
 
-					if bestMatch >= 0 {
-						// Replace the lunar label at this position
-						match := nextLine[bestMatch:]
-						coloredMatch := lunarRe.ReplaceAllString(match, fmt.Sprintf("${1}%s%s%s${2}", colorStart, info.lunarLabel, colorEnd))
-						lines[i+1] = nextLine[:bestMatch] + coloredMatch
+					// Extract the parts from the matched string
+					parts := lunarRe.FindStringSubmatch(matched)
+					if len(parts) >= 4 {
+						// parts[0] = full match
+						// parts[1] = first capture group (\s|│)
+						// parts[2] = second capture group (lunar label)
+						// parts[3] = third capture group (\s+|│)
+						coloredMatch := parts[1] + colorStart + info.lunarLabel + colorEnd + parts[3]
+						lines[i+1] = before + coloredMatch + after
 						coloredLunarLabels[lunarKey] = true
 						break
 					}
@@ -410,4 +400,15 @@ func HelpLine() string {
 		return helpText
 	}
 	return helpStyle.Render(helpText)
+}
+
+// ColorLegend returns a legend explaining the color coding for holidays.
+func ColorLegend() string {
+	legend := "\n蓝色=节假日  橙色=调休日"
+	if noColorMode {
+		return legend
+	}
+	// Use gray color for the legend
+	legendStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
+	return legendStyle.Render(legend)
 }

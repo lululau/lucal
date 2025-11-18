@@ -139,6 +139,11 @@ func NewService(opts ...Option) *Service {
 	return s
 }
 
+// HasHolidayData returns true if the service has holiday data loaded.
+func (s *Service) HasHolidayData() bool {
+	return s.holidayData != nil && len(s.holidayData) > 0
+}
+
 var (
 	// ErrYearOutOfRange indicates the requested year is unsupported.
 	ErrYearOutOfRange = fmt.Errorf("year must be between %d and %d", MinSupportedYear, MaxSupportedYear)

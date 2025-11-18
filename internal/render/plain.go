@@ -13,10 +13,10 @@ import (
 
 // PlainOptions controls how the non-interactive renderer behaves.
 type PlainOptions struct {
-	Writer           io.Writer
-	Service          *calendar.Service
-	Request          calendar.Request
-	Width            int
+	Writer            io.Writer
+	Service           *calendar.Service
+	Request           calendar.Request
+	Width             int
 	HolidayCacheValid bool
 }
 
@@ -50,6 +50,17 @@ func RunPlain(opts PlainOptions) error {
 	if err != nil {
 		return err
 	}
+
+	// Show color legend if holiday data is available
+	if opts.Service != nil && opts.Service.HasHolidayData() {
+		legend := ColorLegend()
+		// Remove ANSI codes for plain output if needed, but keep the text
+		_, err = fmt.Fprintln(opts.Writer, "\n"+legend)
+		if err != nil {
+			return err
+		}
+	}
+
 	if !opts.HolidayCacheValid {
 		_, err = fmt.Fprintln(opts.Writer, "\n尚未下载节假日数据或节假日数据超过 6 个月未更新，运行  lucal -u 获取最新数据")
 	}
@@ -77,4 +88,3 @@ func fetchViews(svc *calendar.Service, req calendar.Request) ([]calendar.MonthVi
 	}
 	return []calendar.MonthView{view}, nil
 }
-

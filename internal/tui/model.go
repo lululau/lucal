@@ -130,6 +130,13 @@ func (m model) View() string {
 			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#F97316")).Render(status))
 		}
 	}
+
+	// Show color legend if holiday data is available
+	if m.svc.HasHolidayData() {
+		sb.WriteString("\n")
+		sb.WriteString(render.ColorLegend())
+	}
+
 	if !m.holidayCacheValid {
 		sb.WriteString("\n")
 		warningMsg := "\n尚未下载节假日数据或节假日数据超过 6 个月未更新，运行  lucal -u 获取最新数据"

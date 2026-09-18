@@ -108,7 +108,7 @@ type MonthView struct {
 // Service materialises month/year views using the upstream lunar calendar.
 type Service struct {
 	now         func() time.Time
-	holidayData map[string]map[string]*holidays.HolidayEntry
+	holidayData holidays.HolidayIndex
 }
 
 // Option configures the Service.
@@ -122,7 +122,7 @@ func WithNow(now func() time.Time) Option {
 }
 
 // WithHolidays sets the holiday data for the service.
-func WithHolidays(data map[string]map[string]*holidays.HolidayEntry) Option {
+func WithHolidays(data holidays.HolidayIndex) Option {
 	return func(s *Service) {
 		s.holidayData = data
 	}

@@ -99,11 +99,15 @@ lucal -u
 lucal --update-holidays
 ```
 
-This will download the latest holiday data from GitHub and save it to the cache directory.
-The download progress is displayed with a progress bar showing speed and file size.
+This will download the latest holiday data (one file per year, 2007 onwards) from
+[NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn) and save it to
+the cache directory. The download progress is displayed with a progress bar showing
+the number of years fetched.
 
-**Holiday Data Source**: Holiday information is sourced from [timor.tech API](https://timor.tech/api/holiday),
-which provides Chinese public holiday and workday (调休) data.
+**Holiday Data Source**: Holiday information is sourced from
+[NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn), which is
+generated from official State Council announcements and provides Chinese public
+holiday and workday (调休) data.
 
 For development/debugging, you can specify a custom holiday data file:
 ```bash

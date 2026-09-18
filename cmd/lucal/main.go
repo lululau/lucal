@@ -58,7 +58,7 @@ func main() {
 	}
 
 	// Load holiday data
-	var holidayData map[string]map[string]*holidays.HolidayEntry
+	var holidayData holidays.HolidayIndex
 	var cacheValid bool
 	var err error
 

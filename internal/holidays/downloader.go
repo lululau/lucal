@@ -7,61 +7,72 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
-	holidaysURL = "https://raw.githubusercontent.com/lululau/lucal/main/holidays.json"
+	// holiday-cn publishes one JSON file per year, sourced from official
+	// State Council announcements (see the "papers" field in each file).
+	holidayCnBaseURL = "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master"
+	// Earliest year available in holiday-cn.
+	firstHolidayYear = 2007
+	// Mirror of the merged dataset in this repository, offered as a manual
+	// recovery path when the automated download fails.
+	mirrorURL = "https://raw.githubusercontent.com/lululau/lucal/main/holidays.json"
 )
 
-type downloadProgressMsg struct {
-	bytesDownloaded int64
-	totalBytes      int64
-	speed           float64
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+type yearProgressMsg struct {
+	year    int
+	fetched int
+	total   int
 }
 
 type downloadCompleteMsg struct {
 	fileSize int64
 	modTime  time.Time
 	filePath string
-	yearInfo *YearInfo // Information about years in the downloaded data
+	yearInfo *YearInfo
 	err      error
 }
 
 // YearInfo contains information about the years in the holiday data
 type YearInfo struct {
-	MinYear int // Earliest year
-	MaxYear int // Latest year
-	Count   int // Total number of years
+	MinYear int
+	MaxYear int
+	Count   int
 }
 
 type downloadModel struct {
-	url        string
-	destPath   string
-	downloaded int64
-	total      int64
-	speed      float64
-	done       bool
-	err        error
-	fileSize   int64
-	modTime    time.Time
-	filePath   string
-	yearInfo   *YearInfo
-	progressCh chan downloadProgressMsg
-	completeCh chan downloadCompleteMsg
-	waitingKey bool // Whether we're waiting for user to press a key after completion
+	destPath     string
+	firstYear    int
+	lastYear     int
+	currentYear  int
+	fetched      int
+	total        int
+	done         bool
+	err          error
+	fileSize     int64
+	modTime      time.Time
+	filePath     string
+	yearInfo     *YearInfo
+	progressCh   chan yearProgressMsg
+	completeCh   chan downloadCompleteMsg
+	waitingKey   bool
 }
 
-func newDownloadModel(url, destPath string) downloadModel {
+func newDownloadModel(destPath string) downloadModel {
+	now := time.Now()
 	return downloadModel{
-		url:        url,
 		destPath:   destPath,
-		progressCh: make(chan downloadProgressMsg, 10),
+		firstYear:  firstHolidayYear,
+		lastYear:   now.Year() + 1, // next year's schedule is announced late in the year
+		progressCh: make(chan yearProgressMsg, 32),
 		completeCh: make(chan downloadCompleteMsg, 1),
 	}
 }
@@ -83,79 +94,30 @@ func (m downloadModel) listenProgress() tea.Msg {
 }
 
 func (m downloadModel) startDownload() tea.Msg {
-	// Create directory if it doesn't exist
-	dir := filepath.Dir(m.destPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to create directory: %w", err)}
-		return nil
-	}
-
-	// Start download in goroutine
 	go func() {
-		// Start HTTP request
-		resp, err := http.Get(m.url)
+		years, err := m.fetchAllYears()
 		if err != nil {
-			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to start download: %w", err)}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)}
+			m.completeCh <- downloadCompleteMsg{err: err}
 			return
 		}
 
-		totalBytes := resp.ContentLength
-
-		// Create destination file
-		file, err := os.Create(m.destPath)
+		data, err := json.MarshalIndent(years, "", "  ")
 		if err != nil {
-			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to create file: %w", err)}
+			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to encode holidays JSON: %w", err)}
 			return
 		}
-		defer file.Close()
 
-		// Track download progress
-		var downloaded int64
-		startTime := time.Now()
-
-		// Use TeeReader to track bytes
-		reader := io.TeeReader(resp.Body, &progressWriter{
-			onWrite: func(n int) {
-				atomic.AddInt64(&downloaded, int64(n))
-			},
-		})
-
-		// Send progress updates periodically
-		go func() {
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-			for range ticker.C {
-				currentBytes := atomic.LoadInt64(&downloaded)
-				if currentBytes > 0 {
-					elapsed := time.Since(startTime).Seconds()
-					speed := float64(currentBytes) / elapsed
-					select {
-					case m.progressCh <- downloadProgressMsg{
-						bytesDownloaded: currentBytes,
-						totalBytes:      totalBytes,
-						speed:           speed,
-					}:
-					default:
-						// Channel is full, skip this update
-					}
-				}
-			}
-		}()
-
-		// Copy data
-		_, err = io.Copy(file, reader)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(m.destPath), 0755); err != nil {
+			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to create directory: %w", err)}
+			return
+		}
+		// Write only after every year has been fetched, so a failed download
+		// never destroys an existing valid cache.
+		if err := os.WriteFile(m.destPath, data, 0644); err != nil {
 			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to write file: %w", err)}
 			return
 		}
 
-		// Get file info
 		info, err := os.Stat(m.destPath)
 		if err != nil {
 			m.completeCh <- downloadCompleteMsg{err: fmt.Errorf("failed to stat file: %w", err)}
@@ -163,10 +125,9 @@ func (m downloadModel) startDownload() tea.Msg {
 		}
 
 		// Parse the downloaded file to extract year information
-		yearInfo, err := extractYearInfo(m.destPath)
+		yearInfo, err := extractYearInfo(years)
 		if err != nil {
-			// If we can't parse year info, continue anyway (non-fatal)
-			yearInfo = nil
+			yearInfo = nil // non-fatal
 		}
 
 		m.completeCh <- downloadCompleteMsg{
@@ -180,15 +141,55 @@ func (m downloadModel) startDownload() tea.Msg {
 	return nil
 }
 
-type progressWriter struct {
-	onWrite func(int)
+// fetchAllYears downloads every yearly file from holiday-cn. A 404 is skipped
+// (the year file does not exist yet); any other failure aborts the download.
+func (m downloadModel) fetchAllYears() ([]YearData, error) {
+	var years []YearData
+	for year := m.firstYear; year <= m.lastYear; year++ {
+		yearData, skipped, err := fetchYear(fmt.Sprintf("%s/%d.json", holidayCnBaseURL, year))
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch %d: %w", year, err)
+		}
+		if skipped {
+			continue
+		}
+		years = append(years, *yearData)
+
+		m.progressCh <- yearProgressMsg{year: year, fetched: len(years), total: m.lastYear - m.firstYear + 1}
+	}
+
+	if len(years) == 0 {
+		return nil, fmt.Errorf("no year data available from %s", holidayCnBaseURL)
+	}
+
+	sort.Slice(years, func(i, j int) bool { return years[i].Year < years[j].Year })
+	return years, nil
 }
 
-func (pw *progressWriter) Write(p []byte) (int, error) {
-	if pw.onWrite != nil {
-		pw.onWrite(len(p))
+func fetchYear(url string) (*YearData, bool, error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to start download: %w", err)
 	}
-	return len(p), nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, true, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, false, fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var yearData YearData
+	if err := json.Unmarshal(body, &yearData); err != nil {
+		return nil, false, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+	return &yearData, false, nil
 }
 
 func (m downloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -211,10 +212,10 @@ func (m downloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waitingKey = true
 		// Don't quit immediately, wait for user to see the message and press a key
 		return m, nil
-	case downloadProgressMsg:
-		m.downloaded = msg.bytesDownloaded
-		m.total = msg.totalBytes
-		m.speed = msg.speed
+	case yearProgressMsg:
+		m.currentYear = msg.year
+		m.fetched = msg.fetched
+		m.total = msg.total
 		return m, m.listenProgress
 	}
 
@@ -224,11 +225,10 @@ func (m downloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m downloadModel) View() string {
 	if m.done {
 		if m.err != nil {
-			cachePath := m.destPath
 			errorMsg := fmt.Sprintf("❌ 下载失败\n\n错误详情: %v\n\n", m.err)
 			errorMsg += "您可以手动下载节假日数据文件：\n"
-			errorMsg += fmt.Sprintf("1. 访问: %s\n", holidaysURL)
-			errorMsg += fmt.Sprintf("2. 下载文件并保存到: %s\n", cachePath)
+			errorMsg += fmt.Sprintf("1. 访问: %s\n", mirrorURL)
+			errorMsg += fmt.Sprintf("2. 下载文件并保存到: %s\n", m.destPath)
 			errorMsg += "3. 确保目录存在（如果不存在，请先创建目录）\n\n"
 			errorMsg += "按任意键退出...\n"
 			return errorMsg
@@ -252,33 +252,21 @@ func (m downloadModel) View() string {
 	const barWidth = 50
 	var progressBar string
 	var percent float64
-	var progressInfo string
 
 	if m.total > 0 {
-		percent = float64(m.downloaded) / float64(m.total)
+		percent = float64(m.fetched) / float64(m.total)
 		if percent > 1.0 {
 			percent = 1.0
 		}
 		filled := int(percent * barWidth)
 		empty := barWidth - filled
 		progressBar = strings.Repeat("█", filled) + strings.Repeat("░", empty)
-		speedStr := formatSpeed(m.speed)
-		downloadedStr := formatBytes(m.downloaded)
-		totalStr := formatBytes(m.total)
-		progressInfo = fmt.Sprintf("%s / %s  %s  %.1f%%", downloadedStr, totalStr, speedStr, percent*100)
 	} else {
-		// Unknown total size
 		progressBar = strings.Repeat("░", barWidth)
-		downloadedStr := formatBytes(m.downloaded)
-		if m.speed > 0 {
-			speedStr := formatSpeed(m.speed)
-			progressInfo = fmt.Sprintf("%s  %s", downloadedStr, speedStr)
-		} else {
-			progressInfo = downloadedStr
-		}
 	}
 
-	return fmt.Sprintf("正在下载节假日数据...\n\n[%s]\n%s\n\n按 Ctrl+C 取消\n", progressBar, progressInfo)
+	return fmt.Sprintf("正在从 holiday-cn 下载节假日数据...\n\n[%s]\n%d / %d 年  %.1f%%\n\n按 Ctrl+C 取消\n",
+		progressBar, m.fetched, m.total, percent*100)
 }
 
 func formatBytes(bytes int64) string {
@@ -294,49 +282,20 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-func formatSpeed(speed float64) string {
-	return fmt.Sprintf("%s/s", formatBytes(int64(speed)))
-}
-
-// extractYearInfo parses the holiday JSON file and extracts year information
-func extractYearInfo(filePath string) (*YearInfo, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var holidayData HolidayData
-	if err := json.Unmarshal(data, &holidayData); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
-	}
-
-	if len(holidayData) == 0 {
+// extractYearInfo summarizes the year coverage of the downloaded dataset
+func extractYearInfo(years []YearData) (*YearInfo, error) {
+	if len(years) == 0 {
 		return nil, fmt.Errorf("no year data found")
 	}
 
-	// Extract all years and convert to integers
-	years := make([]int, 0, len(holidayData))
-	for _, yearData := range holidayData {
-		year, err := strconv.Atoi(yearData.Year)
-		if err != nil {
-			continue // Skip invalid years
+	minYear := years[0].Year
+	maxYear := years[0].Year
+	for _, yearData := range years {
+		if yearData.Year < minYear {
+			minYear = yearData.Year
 		}
-		years = append(years, year)
-	}
-
-	if len(years) == 0 {
-		return nil, fmt.Errorf("no valid years found")
-	}
-
-	// Find min and max years
-	minYear := years[0]
-	maxYear := years[0]
-	for _, year := range years {
-		if year < minYear {
-			minYear = year
-		}
-		if year > maxYear {
-			maxYear = year
+		if yearData.Year > maxYear {
+			maxYear = yearData.Year
 		}
 	}
 
@@ -354,7 +313,7 @@ func DownloadHolidays() error {
 		return err
 	}
 
-	m := newDownloadModel(holidaysURL, cachePath)
+	m := newDownloadModel(cachePath)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return err

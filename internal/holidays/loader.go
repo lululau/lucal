@@ -1,6 +1,7 @@
 package holidays
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,25 +9,40 @@ import (
 	"time"
 )
 
-// LoadFromFile loads holiday data from a JSON file.
-func LoadFromFile(path string) (map[string]map[string]*HolidayEntry, error) {
+// HolidayIndex maps full dates ("2026-01-04") to their holiday-cn day entry.
+type HolidayIndex = map[string]*Day
+
+// LoadFromFile loads holiday data from a JSON file in the holiday-cn format.
+// The file may be a merged array of years or a single yearly file.
+func LoadFromFile(path string) (HolidayIndex, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read holidays file: %w", err)
 	}
 
-	var holidayData HolidayData
-	if err := json.Unmarshal(data, &holidayData); err != nil {
-		return nil, fmt.Errorf("failed to parse holidays JSON: %w", err)
+	var years []YearData
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		var single YearData
+		if err := json.Unmarshal(trimmed, &single); err != nil {
+			return nil, fmt.Errorf("failed to parse holidays JSON: %w", err)
+		}
+		years = []YearData{single}
+	} else {
+		if err := json.Unmarshal(trimmed, &years); err != nil {
+			return nil, fmt.Errorf("failed to parse holidays JSON: %w", err)
+		}
 	}
 
-	// Convert array format to map format for easier lookup
-	result := make(map[string]map[string]*HolidayEntry)
-	for _, yearData := range holidayData {
-		result[yearData.Year] = yearData.Holiday
+	index := make(HolidayIndex)
+	for _, yearData := range years {
+		for i := range yearData.Days {
+			day := &yearData.Days[i]
+			index[day.Date] = day
+		}
 	}
 
-	return result, nil
+	return index, nil
 }
 
 // GetCachePath returns the path to the holidays cache file in XDG cache directory.
@@ -39,7 +55,7 @@ func GetCachePath() (string, error) {
 }
 
 // LoadFromCache loads holiday data from the XDG cache directory.
-func LoadFromCache() (map[string]map[string]*HolidayEntry, error) {
+func LoadFromCache() (HolidayIndex, error) {
 	cachePath, err := GetCachePath()
 	if err != nil {
 		return nil, err
@@ -63,27 +79,18 @@ func IsCacheValid(cachePath string) (bool, error) {
 }
 
 // GetHolidayForDate retrieves holiday information for a specific date.
-func GetHolidayForDate(data map[string]map[string]*HolidayEntry, year int, month int, day int) *HolidayInfo {
+func GetHolidayForDate(data HolidayIndex, year int, month int, day int) *HolidayInfo {
 	if data == nil {
 		return nil
 	}
 
-	yearStr := fmt.Sprintf("%d", year)
-	dateStr := fmt.Sprintf("%02d-%02d", month, day)
-
-	yearData, exists := data[yearStr]
-	if !exists {
-		return nil
-	}
-
-	entry, exists := yearData[dateStr]
+	entry, exists := data[fmt.Sprintf("%04d-%02d-%02d", year, month, day)]
 	if !exists {
 		return nil
 	}
 
 	return &HolidayInfo{
-		IsHoliday: entry.Holiday,
+		IsHoliday: entry.IsOffDay,
 		Name:      entry.Name,
 	}
 }
-

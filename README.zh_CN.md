@@ -90,11 +90,13 @@ lucal -u
 lucal --update-holidays
 ```
 
-这将从 GitHub 下载最新节假日数据并保存到缓存目录。
-下载进度会通过进度条显示，包含速度和文件大小信息。
+这将从 [NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn) 下载最新节假日数据
+（按年一个文件，覆盖 2007 年起）并保存到缓存目录。
+下载进度会通过进度条显示已获取的年份数。
 
-**节假日数据来源**：节假日信息来源于 [timor.tech API](https://timor.tech/api/holiday)，
-该 API 提供中国法定节假日和调休工作日数据。
+**节假日数据来源**：节假日信息来源于
+[NateScarlet/holiday-cn](https://github.com/NateScarlet/holiday-cn)，
+该项目根据国务院办公厅通知原文自动生成，提供中国法定节假日和调休工作日数据。
 
 用于开发/调试，您可以指定自定义节假日数据文件：
 ```bash
